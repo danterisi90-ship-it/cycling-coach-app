@@ -33,16 +33,12 @@ jobs:
         echo "SYSTEM_PYVER=$PYVER" >> $GITHUB_ENV
         python3 --version
 
-    - name: Install Buildozer in isolated venv
+    - name: Install Buildozer
       run: |
-        # Install cython system-wide so buildozer's PATH check finds it
-        python3 -m pip install --upgrade pip "cython==0.29.36"
-        # Also install buildozer + cython in venv for isolated execution
-        python3 -m venv ~/build_venv
-        ~/build_venv/bin/pip install --upgrade pip
-        ~/build_venv/bin/pip install buildozer==1.5.0 "cython==0.29.36"
-        ~/build_venv/bin/buildozer --version
-        # Verify cython is findable on PATH
+        # Install directly into system Python — buildozer uses --user pip internally
+        # which is blocked inside a venv, so we cannot use a venv here
+        python3 -m pip install --upgrade pip "cython==0.29.36" buildozer==1.5.0
+        buildozer --version
         cython --version
 
     - name: Prepare build directory
@@ -82,7 +78,7 @@ jobs:
     - name: Build APK
       working-directory: build_src
       run: |
-        ~/build_venv/bin/buildozer -v android debug 2>&1
+        buildozer -v android debug 2>&1
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
