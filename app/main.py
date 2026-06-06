@@ -808,25 +808,52 @@ class CyclingCoachApp(App):
 
     def _build_app(self):
         _log('_build_app() called')
+        # Enable faulthandler to log segfaults (native crashes)
+        try:
+            import faulthandler
+            for _fp in _LOG_PATHS:
+                try:
+                    _fh = open(_fp + '.fault', 'w')
+                    faulthandler.enable(file=_fh)
+                    _log(f'faulthandler enabled -> {_fp}.fault')
+                    break
+                except Exception:
+                    pass
+        except Exception as _fe:
+            _log(f'faulthandler setup failed: {_fe}')
+
+        _log('step1: setting Window.clearcolor...')
         Window.clearcolor = BG_DARK
+        _log('step2: Window.clearcolor OK')
+
         self.engine = None
+        _log('step3: checking CoachEngine availability...')
         if CoachEngine is not None:
+            _log('step4: CoachEngine available, calling constructor...')
             try:
                 self.engine = CoachEngine()
+                _log('step5: CoachEngine() constructed OK')
+                _log('step6: calling engine.load()...')
                 ok = self.engine.load()
+                _log(f'step7: load() returned {ok} | error={self.engine.error_message!r}')
                 if not ok:
-                    print(f"[Engine] {self.engine.error_message}")
+                    _log(f'[Engine not loaded] {self.engine.error_message}')
             except Exception as e:
-                print(f"[Engine load error] {e}")
+                _log(f'step-FAIL: Engine error: {traceback.format_exc()}')
                 self.engine = None
-        elif ENGINE_IMPORT_ERROR:
-            print(f"[Engine import error] {ENGINE_IMPORT_ERROR}")
+        else:
+            _log(f'step4: CoachEngine is None | import error={ENGINE_IMPORT_ERROR}')
 
+        _log('step8: creating ScreenManager...')
         sm = ScreenManager()
+        _log('step9: adding HomeScreen...')
         sm.add_widget(HomeScreen(name="home",     engine=self.engine))
+        _log('step10: adding WellnessScreen...')
         sm.add_widget(WellnessScreen(name="wellness", engine=self.engine))
+        _log('step11: adding ResultScreen...')
         sm.add_widget(ResultScreen(name="result"))
         sm.current = "home"
+        _log('step12: _build_app() COMPLETE - returning ScreenManager')
         return sm
 
 

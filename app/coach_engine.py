@@ -196,23 +196,54 @@ class CoachEngine:
 
     def load(self) -> bool:
         """Load model and config. Returns True on success."""
-        # Lazy imports — kept here so native .so crashes are catchable
+        import sys
+        # Import _log from main if available (for on-device diagnostics)
         try:
-            import numpy as np          # noqa: F401 (used in simulate)
-            import pandas as pd         # noqa: F401 (used in simulate)
-            import joblib as _joblib
+            from main import _log as _eng_log
+        except Exception:
+            _eng_log = lambda m: None
+
+        _eng_log('engine.load() start')
+        # Lazy imports — each logged separately to identify which .so crashes
+        try:
+            _eng_log('importing numpy...')
+            import numpy as np
+            _eng_log(f'numpy OK: {np.__version__}')
         except Exception as e:
-            self.error_message = f"Failed to import data libraries: {e}"
+            self.error_message = f"numpy import failed: {e}"
+            _eng_log(f'numpy FAILED: {e}')
             return False
 
+        try:
+            _eng_log('importing pandas...')
+            import pandas as pd
+            _eng_log(f'pandas OK: {pd.__version__}')
+        except Exception as e:
+            self.error_message = f"pandas import failed: {e}"
+            _eng_log(f'pandas FAILED: {e}')
+            return False
+
+        try:
+            _eng_log('importing joblib...')
+            import joblib as _joblib
+            _eng_log('joblib OK')
+        except Exception as e:
+            self.error_message = f"joblib import failed: {e}"
+            _eng_log(f'joblib FAILED: {e}')
+            return False
+
+        _eng_log('finding model files...')
         model_path = _find_file(SEARCH_PATHS)
         config_path = _find_file(CONFIG_PATHS)
+        _eng_log(f'model_path={model_path}')
+        _eng_log(f'config_path={config_path}')
 
         if model_path is None:
             self.error_message = (
                 "model.joblib not found.\n"
                 f"Searched: {[str(p) for p in SEARCH_PATHS]}"
             )
+            _eng_log(self.error_message)
             return False
 
         if config_path is None:
@@ -220,18 +251,24 @@ class CoachEngine:
                 "model_config.json not found.\n"
                 f"Searched: {[str(p) for p in CONFIG_PATHS]}"
             )
+            _eng_log(self.error_message)
             return False
 
         try:
+            _eng_log(f'joblib.load({model_path})...')
             self.model = _joblib.load(model_path)
+            _eng_log('joblib.load() OK - model type: ' + type(self.model).__name__)
             with open(config_path, "r") as f:
                 self.config = json.load(f)
             self.feature_columns = self.config.get("feature_columns", [])
             self.top_features = self.config.get("top_feature_names", [])
             self.loaded = True
+            _eng_log(f'engine.load() COMPLETE. features={len(self.feature_columns)}')
             return True
         except Exception as e:
+            import traceback
             self.error_message = f"Error loading model: {e}"
+            _eng_log(f'model load FAILED: {traceback.format_exc()}')
             return False
 
     def simulate(self, morning_inputs: dict) -> dict:
