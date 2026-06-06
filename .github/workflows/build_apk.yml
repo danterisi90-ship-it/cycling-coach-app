@@ -72,10 +72,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.buildozer
-        key: buildozer-${{ runner.os }}-v6-${{ hashFiles('app/buildozer.spec') }}
+        key: buildozer-${{ runner.os }}-v7-${{ hashFiles('app/buildozer.spec') }}
         restore-keys: |
-          buildozer-${{ runner.os }}-v6-
-          buildozer-${{ runner.os }}-
+          buildozer-${{ runner.os }}-v7-
 
     - name: Accept Android SDK licenses
       run: |

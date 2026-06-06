@@ -81,7 +81,7 @@ android.private_storage = True
 #p4a.fork = upstream
 
 # (str) git branch/tag/commit from p4a to use
-p4a.branch = master
+p4a.branch = v2024.01.21
 
 # (str) Bootstrap to use for p4a
 p4a.bootstrap = sdl2
