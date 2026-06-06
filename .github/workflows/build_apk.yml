@@ -48,6 +48,24 @@ jobs:
         echo "Requirements:"
         grep "^requirements" build_src/buildozer.spec
 
+    - name: Use pre-installed Android SDK and NDK r27
+      run: |
+        # The runner has NDK r27d at /usr/local/lib/android/sdk/ndk/27.3.13750724
+        # Using it avoids a ~1 GB download and provides newer clang/libc++
+        # which fixes NumPy 2.x C++ compilation errors with NDK r25b
+        NDK_PATH="/usr/local/lib/android/sdk/ndk/27.3.13750724"
+        SDK_PATH="/usr/local/lib/android/sdk"
+        sed -i "s|#android.ndk_path =|android.ndk_path = $NDK_PATH|" build_src/buildozer.spec
+        sed -i "s|#android.sdk_path =|android.sdk_path = $SDK_PATH|"  build_src/buildozer.spec
+        sed -i "s|android.ndk = 25b|android.ndk = 25b|" build_src/buildozer.spec
+        # Accept SDK licenses
+        mkdir -p "$SDK_PATH/licenses"
+        echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_PATH/licenses/android-sdk-license"
+        echo -e "\nd56f5187479451eabf01fb78af6dfcb131a6481e\n84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_PATH/licenses/android-sdk-preview-license"
+        echo "Spec NDK/SDK config:"
+        grep -E '^android\.(ndk|sdk)' build_src/buildozer.spec
+        echo "NDK exists: $(ls $NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang 2>/dev/null && echo YES || echo NO)"
+
     - name: Cache Buildozer global directory
       uses: actions/cache@v4
       with:
