@@ -35,12 +35,15 @@ jobs:
 
     - name: Install Buildozer in isolated venv
       run: |
-        # Use a clean venv so buildozer + p4a run under the EXACT same
-        # Python that hostpython3 will detect — no version mismatch possible
+        # Install cython system-wide so buildozer's PATH check finds it
+        python3 -m pip install --upgrade pip "cython==0.29.36"
+        # Also install buildozer + cython in venv for isolated execution
         python3 -m venv ~/build_venv
         ~/build_venv/bin/pip install --upgrade pip
         ~/build_venv/bin/pip install buildozer==1.5.0 "cython==0.29.36"
         ~/build_venv/bin/buildozer --version
+        # Verify cython is findable on PATH
+        cython --version
 
     - name: Prepare build directory
       run: |
