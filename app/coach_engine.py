@@ -21,9 +21,9 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import pandas as pd
-import joblib
+# numpy, pandas, joblib are imported lazily inside load()/simulate()
+# to avoid uncatchable native library crashes at module level on Android.
+
 
 # ---------------------------------------------------------------------------
 # File resolution — works both on PC and inside a compiled Kivy APK
@@ -40,11 +40,14 @@ CONFIG_PATHS = [
     _PARENT / "model_config.json",
 ]
 
-# History file lives alongside the app script (or in Kivy app user_data_dir)
+# History file — prefer writable Android private dir, fall back to app dir
+_ANDROID_PRIVATE = os.environ.get('ANDROID_PRIVATE', '')
 HISTORY_PATHS = [
-    _HERE / "coach_history.json",
-    _PARENT / "coach_history.json",
+    Path(_ANDROID_PRIVATE) / 'coach_history.json' if _ANDROID_PRIVATE else None,
+    _HERE / 'coach_history.json',
+    _PARENT / 'coach_history.json',
 ]
+HISTORY_PATHS = [p for p in HISTORY_PATHS if p is not None]
 
 ACTION_ENCODE = {"Rest": 0, "Easy": 1, "Hard": 2}
 ACTION_DECODE = {0: "Rest", 1: "Easy", 2: "Hard"}
@@ -193,25 +196,34 @@ class CoachEngine:
 
     def load(self) -> bool:
         """Load model and config. Returns True on success."""
+        # Lazy imports — kept here so native .so crashes are catchable
+        try:
+            import numpy as np          # noqa: F401 (used in simulate)
+            import pandas as pd         # noqa: F401 (used in simulate)
+            import joblib as _joblib
+        except Exception as e:
+            self.error_message = f"Failed to import data libraries: {e}"
+            return False
+
         model_path = _find_file(SEARCH_PATHS)
         config_path = _find_file(CONFIG_PATHS)
 
         if model_path is None:
             self.error_message = (
                 "model.joblib not found.\n"
-                "Run 05_train_model.py first to train the model."
+                f"Searched: {[str(p) for p in SEARCH_PATHS]}"
             )
             return False
 
         if config_path is None:
             self.error_message = (
                 "model_config.json not found.\n"
-                "Run 05_train_model.py first."
+                f"Searched: {[str(p) for p in CONFIG_PATHS]}"
             )
             return False
 
         try:
-            self.model = joblib.load(model_path)
+            self.model = _joblib.load(model_path)
             with open(config_path, "r") as f:
                 self.config = json.load(f)
             self.feature_columns = self.config.get("feature_columns", [])
@@ -257,6 +269,9 @@ class CoachEngine:
         """
         if not self.loaded:
             raise RuntimeError("Engine not loaded. Call load() first.")
+
+        import numpy as np
+        import pandas as pd
 
         history = load_history()
         lag_1_stored = history["action_lag_1"]   # yesterday's actual action

@@ -27,10 +27,51 @@ Build APK:
 
 import os
 import sys
+import traceback
+
+# -----------------------------------------------------------------------
+# EARLY DIAGNOSTIC LOG — runs before any kivy import
+# Writes to Android Downloads folder so we can read it via file manager
+# -----------------------------------------------------------------------
+_LOG_PATHS = [
+    '/storage/emulated/0/Download/coach_crash.log',
+    '/storage/emulated/0/coach_crash.log',
+    os.path.join(os.environ.get('ANDROID_PRIVATE', ''),
+                 'coach_crash.log') if os.environ.get('ANDROID_PRIVATE') else None,
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'crash.log'),
+]
+_LOG_PATHS = [p for p in _LOG_PATHS if p]
+_ACTIVE_LOG = None
+
+def _log(msg: str):
+    global _ACTIVE_LOG
+    line = msg + '\n'
+    if _ACTIVE_LOG:
+        try:
+            with open(_ACTIVE_LOG, 'a') as _f:
+                _f.write(line)
+            return
+        except Exception:
+            _ACTIVE_LOG = None
+    for p in _LOG_PATHS:
+        try:
+            with open(p, 'a') as _f:
+                _f.write(line)
+            _ACTIVE_LOG = p
+            return
+        except Exception:
+            continue
+
+_log('=== COACH APP START ===')
+_log(f'Python {sys.version}')
+_log(f'CWD: {os.getcwd()}')
+_log(f'ANDROID_PRIVATE: {os.environ.get("ANDROID_PRIVATE", "not set")}')
+_log(f'Script: {os.path.abspath(__file__)}')
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+_log('importing kivy...')
 from kivy.app import App
 from kivy.metrics import dp, sp
 from kivy.core.window import Window
@@ -43,14 +84,18 @@ from kivy.uix.button import Button
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle, Rectangle
 from kivy.utils import get_color_from_hex
+_log('kivy imported OK')
 
 import traceback
 
+_log('importing coach_engine...')
 try:
     from coach_engine import CoachEngine, get_history_labels, ACTION_DECODE, ACTION_ENCODE
     ENGINE_IMPORT_ERROR = None
+    _log('coach_engine imported OK')
 except Exception as e:
     ENGINE_IMPORT_ERROR = traceback.format_exc()
+    _log(f'coach_engine FAILED: {ENGINE_IMPORT_ERROR}')
     CoachEngine = None
     def get_history_labels(): return {"yesterday": "?", "2_days_ago": "?", "3_days_ago": "?"}
     ACTION_DECODE = {0: "Rest", 1: "Easy", 2: "Hard"}
@@ -78,7 +123,10 @@ ACTION_PALETTE = {
     "Hard": get_color_from_hex("#F85149"),
 }
 
-Window.clearcolor = BG_DARK
+
+# Window.clearcolor is set inside build() — NOT at module level
+# (setting it here crashes on Android before the display is ready)
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -759,6 +807,8 @@ class CyclingCoachApp(App):
             return sm
 
     def _build_app(self):
+        _log('_build_app() called')
+        Window.clearcolor = BG_DARK
         self.engine = None
         if CoachEngine is not None:
             try:
