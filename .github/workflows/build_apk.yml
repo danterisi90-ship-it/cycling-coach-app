@@ -48,25 +48,6 @@ jobs:
         echo "Requirements:"
         grep "^requirements" build_src/buildozer.spec
 
-    - name: Configure NDK path in buildozer.spec
-      run: |
-        # Use the runner's pre-installed NDK r27d (27.3.x) — has newer clang/libc++
-        # which fixes NumPy 2.x C++ compilation errors seen with NDK r25b.
-        # We do NOT set android.sdk_path — buildozer manages its own SDK download
-        # because the pre-installed SDK uses new cmdline-tools layout that
-        # buildozer 1.5.0 doesn't recognise (expects tools/bin/sdkmanager).
-        NDK_PATH="/usr/local/lib/android/sdk/ndk/27.3.13750724"
-        if [ -d "$NDK_PATH" ]; then
-          sed -i "s|#android.ndk_path =|android.ndk_path = $NDK_PATH|" build_src/buildozer.spec
-          echo "NDK r27d configured: $NDK_PATH"
-          echo "Clang version:"
-          $NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --version | head -1
-        else
-          echo "WARNING: Pre-installed NDK not found at $NDK_PATH — buildozer will download NDK r25b"
-          ls /usr/local/lib/android/sdk/ndk/ 2>/dev/null || echo "No NDK dir"
-        fi
-        echo "Spec after patch:"
-        grep -E '^android\.(ndk|sdk)' build_src/buildozer.spec || echo "(no overrides)"
 
     - name: Cache Buildozer global directory
       uses: actions/cache@v4
