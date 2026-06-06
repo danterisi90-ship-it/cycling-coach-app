@@ -41,7 +41,7 @@ jobs:
         cp app/main.py          build_src/
         cp app/coach_engine.py  build_src/
         cp app/buildozer.spec   build_src/
-        cp model.joblib         build_src/
+        cp app/model_xgb.json   build_src/
         cp model_config.json    build_src/
         echo "Contents:"
         ls -lh build_src/

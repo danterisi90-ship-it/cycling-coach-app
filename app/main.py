@@ -1,22 +1,22 @@
 """
-Coach App — Kivy UI (v2)
+Coach App -- Kivy UI (v2)
 =========================
 Redesigned for minimal daily friction:
 
   Screen 1 (HomeScreen):
     - Shows yesterday's stored history (Lag_1/2/3) as read-only badges
-    - "Yesterday's ride was:" → 3 large tap-buttons (Rest / Easy / Hard)
+    - "Yesterday's ride was:" >> 3 large tap-buttons (Rest / Easy / Hard)
     - Tapping a button commits that choice to FIFO storage, advances lags,
       and navigates to the wellness input screen
 
   Screen 2 (WellnessScreen):
     - Scrollable inputs for morning metrics (SHAP-selected, no action fields)
-    - "GET RECOMMENDATION" button → runs simulation → goes to results
+    - "GET RECOMMENDATION" button >> runs simulation >> goes to results
 
   Screen 3 (ResultScreen):
     - Shows 3 scenario cards (Rest / Easy / Hard) with predicted EF slopes
     - Highlights the recommended action
-    - "← New Assessment" returns to HomeScreen
+    - "<< New Assessment" returns to HomeScreen
 
 Run on PC:
   python app/main.py
@@ -30,7 +30,7 @@ import sys
 import traceback
 
 # -----------------------------------------------------------------------
-# EARLY DIAGNOSTIC LOG — runs before any kivy import
+# EARLY DIAGNOSTIC LOG -- runs before any kivy import
 # Writes to Android Downloads folder so we can read it via file manager
 # -----------------------------------------------------------------------
 _LOG_PATHS = [
@@ -102,9 +102,9 @@ except Exception as e:
     ACTION_ENCODE = {"Rest": 0, "Easy": 1, "Hard": 2}
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 #  Colour palette
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 BG_DARK      = get_color_from_hex("#0D1117")
 BG_CARD      = get_color_from_hex("#161B22")
 BG_CARD2     = get_color_from_hex("#1C2128")
@@ -124,14 +124,14 @@ ACTION_PALETTE = {
 }
 
 
-# Window.clearcolor is set inside build() — NOT at module level
+# Window.clearcolor is set inside build() -- NOT at module level
 # (setting it here crashes on Android before the display is ready)
 
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 #  Shared helpers
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def _bg_canvas(widget, color, radius=dp(0)):
     with widget.canvas.before:
@@ -297,9 +297,9 @@ class PrimaryButton(Button):
                   size=lambda i, v: setattr(self._rect, "size", v))
 
 
-# ─────────────────────────────────────────────────────────────
-#  Screen 1 — Home: yesterday's action selector
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
+#  Screen 1 -- Home: yesterday's action selector
+# -------------------------------------------------------------
 
 class HomeScreen(Screen):
     """
@@ -320,7 +320,7 @@ class HomeScreen(Screen):
 
         # Header
         root.add_widget(make_header(
-            "🚴  Cycling Coach",
+            "[BIKE]  Cycling Coach",
             "Daily morning training recommendation",
         ))
 
@@ -334,8 +334,8 @@ class HomeScreen(Screen):
         )
         body.bind(minimum_height=body.setter("height"))
 
-        # ── History row ──
-        body.add_widget(make_section_label("📅  Recent Training History"))
+        # -- History row --
+        body.add_widget(make_section_label("[CAL]  Recent Training History"))
 
         self._history_row = BoxLayout(
             spacing=dp(8), size_hint_y=None, height=dp(68),
@@ -350,11 +350,11 @@ class HomeScreen(Screen):
             Rectangle(pos=div.pos, size=div.size)
         body.add_widget(div)
 
-        # ── Action selector ──
-        body.add_widget(make_section_label("❓  Yesterday's training was:"))
+        # -- Action selector --
+        body.add_widget(make_section_label("[?]  Yesterday's training was:"))
 
         note = Label(
-            text="Tap to select — history updates automatically",
+            text="Tap to select -- history updates automatically",
             font_size=sp(11), color=TEXT_DIM, halign="center",
             size_hint_y=None, height=dp(20),
         )
@@ -381,9 +381,9 @@ class HomeScreen(Screen):
         scroll.add_widget(body)
         root.add_widget(scroll)
 
-        # ── Proceed button ──
+        # -- Proceed button --
         self._proceed_btn = PrimaryButton(
-            "ENTER TODAY'S METRICS →",
+            "ENTER TODAY'S METRICS >>",
             color=(0.13, 0.22, 0.38, 1),
         )
         self._proceed_btn.bind(on_release=self._on_proceed)
@@ -427,25 +427,25 @@ class HomeScreen(Screen):
             updated = advance_history(action)
 
         self._refresh_history_row()
-        self._confirm_lbl.text = f"✓ Recorded: Yesterday = {action}"
+        self._confirm_lbl.text = f"[OK] Recorded: Yesterday = {action}"
 
     def _on_proceed(self, *args):
         if self._selected_action is None:
-            self._confirm_lbl.text = "⚠ Please select yesterday's action first"
+            self._confirm_lbl.text = "[!] Please select yesterday's action first"
             self._confirm_lbl.color = ACCENT_RED
             return
         self.manager.transition = SlideTransition(direction="left")
         self.manager.current = "wellness"
 
 
-# ─────────────────────────────────────────────────────────────
-#  Screen 2 — Wellness metrics input
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
+#  Screen 2 -- Wellness metrics input
+# -------------------------------------------------------------
 
 class WellnessScreen(Screen):
     """
     Scrollable form for morning wellness metrics.
-    Action lags are NOT shown here — they come from local storage.
+    Action lags are NOT shown here -- they come from local storage.
     """
 
     def __init__(self, engine, **kwargs):
@@ -457,7 +457,7 @@ class WellnessScreen(Screen):
     def _build(self):
         root = BoxLayout(orientation="vertical")
         root.add_widget(make_header(
-            "📊  Morning Metrics",
+            "[CHART]  Morning Metrics",
             "Enter your biometric readings",
         ))
 
@@ -471,7 +471,7 @@ class WellnessScreen(Screen):
         body.bind(minimum_height=body.setter("height"))
 
         if self.engine and self.engine.loaded:
-            body.add_widget(make_section_label("🔬  Key Physiological Indicators"))
+            body.add_widget(make_section_label("[SCI]  Key Physiological Indicators"))
 
             for feat_info in self.engine.get_wellness_feature_info():
                 wi = StyledInput(
@@ -484,7 +484,7 @@ class WellnessScreen(Screen):
                 body.add_widget(wi)
 
             note = Label(
-                text="✦ Features ranked by SHAP importance. Action history is auto-loaded.",
+                text="* Features ranked by SHAP importance. Action history is auto-loaded.",
                 font_size=sp(11), color=TEXT_DIM, italic=True,
                 halign="center", size_hint_y=None, height=dp(26),
             )
@@ -492,7 +492,7 @@ class WellnessScreen(Screen):
             body.add_widget(note)
         else:
             err = Label(
-                text=f"⚠ Model not loaded\n{self.engine.error_message if self.engine else ''}",
+                text=f"[!] Model not loaded\n{self.engine.error_message if self.engine else ''}",
                 font_size=sp(13), color=ACCENT_RED,
                 halign="center", size_hint_y=None, height=dp(80),
             )
@@ -504,12 +504,12 @@ class WellnessScreen(Screen):
 
         btn_row = BoxLayout(size_hint_y=None, height=dp(54))
 
-        back_btn = PrimaryButton("←", color=(0.09, 0.14, 0.22, 1))
+        back_btn = PrimaryButton("<<", color=(0.09, 0.14, 0.22, 1))
         back_btn.size_hint_x = 0.2
         back_btn.bind(on_release=self._go_back)
         btn_row.add_widget(back_btn)
 
-        go_btn = PrimaryButton("GET RECOMMENDATION  →")
+        go_btn = PrimaryButton("GET RECOMMENDATION  >>")
         go_btn.size_hint_x = 0.8
         go_btn.bind(on_release=self._on_recommend)
         btn_row.add_widget(go_btn)
@@ -542,9 +542,9 @@ class WellnessScreen(Screen):
             print(f"Simulation error: {e}")
 
 
-# ─────────────────────────────────────────────────────────────
-#  Screen 3 — Results
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
+#  Screen 3 -- Results
+# -------------------------------------------------------------
 
 class ResultCard(BoxLayout):
     """Card showing one scenario's predicted next-workout EF delta."""
@@ -698,7 +698,7 @@ class ResultScreen(Screen):
         ctx_lbl.bind(size=lambda i, v: setattr(i, "text_size", (v[0], None)))
         body.add_widget(ctx_lbl)
 
-        body.add_widget(make_section_label("📈  Next Workout Efficiency Forecast"))
+        body.add_widget(make_section_label("[UP]  Next Workout Efficiency Forecast"))
 
         # Recommended first, then others
         order = [recommended] + [a for a in ("Rest", "Easy", "Hard") if a != recommended]
@@ -725,7 +725,7 @@ class ResultScreen(Screen):
         scroll.add_widget(body)
         self._root.add_widget(scroll)
 
-        back = PrimaryButton("← NEW ASSESSMENT", color=(0.09, 0.14, 0.22, 1))
+        back = PrimaryButton("<< NEW ASSESSMENT", color=(0.09, 0.14, 0.22, 1))
         back.bind(on_release=self._go_home)
         self._root.add_widget(back)
 
@@ -734,9 +734,9 @@ class ResultScreen(Screen):
         self.manager.current = "home"
 
 
-# ─────────────────────────────────────────────────────────────
-#  Error screen — shown instead of crashing
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
+#  Error screen -- shown instead of crashing
+# -------------------------------------------------------------
 
 class ErrorScreen(Screen):
     """Full-screen error display so crashes are readable on device."""
@@ -774,9 +774,9 @@ class ErrorScreen(Screen):
         self.add_widget(root)
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 #  App root
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 class CyclingCoachApp(App):
     title = "Cycling Coach"
@@ -846,15 +846,24 @@ class CyclingCoachApp(App):
 
         _log('step8: creating ScreenManager...')
         sm = ScreenManager()
-        _log('step9: adding HomeScreen...')
-        sm.add_widget(HomeScreen(name="home",     engine=self.engine))
-        _log('step10: adding WellnessScreen...')
-        sm.add_widget(WellnessScreen(name="wellness", engine=self.engine))
-        _log('step11: adding ResultScreen...')
-        sm.add_widget(ResultScreen(name="result"))
-        sm.current = "home"
+        try:
+            _log('step9: adding HomeScreen...')
+            sm.add_widget(HomeScreen(name="home",     engine=self.engine))
+            _log('step10: adding WellnessScreen...')
+            sm.add_widget(WellnessScreen(name="wellness", engine=self.engine))
+            _log('step11: adding ResultScreen...')
+            sm.add_widget(ResultScreen(name="result"))
+        except Exception as e:
+            _log(f'SCREEN INIT CRASH: {traceback.format_exc()}')
+            # Show error screen instead of crashing
+            sm.add_widget(ErrorScreen(
+                name="error",
+                error_msg=f"UI init error: {e}",
+            ))
+        sm.current = sm.screen_names[0]
         _log('step12: _build_app() COMPLETE - returning ScreenManager')
         return sm
+
 
 
 if __name__ == "__main__":
