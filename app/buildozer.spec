@@ -22,7 +22,7 @@ version = 0.1
 
 # (list) Application requirements
 # Separate requirements with commas
-requirements = python3==3.11,kivy==2.3.0,pillow,numpy,pandas,xgboost,scikit-learn,joblib
+requirements = python3,kivy==2.3.0,pillow,numpy,pandas,xgboost,scikit-learn,joblib
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with source

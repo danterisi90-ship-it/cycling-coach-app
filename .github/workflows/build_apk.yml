@@ -25,18 +25,10 @@ jobs:
           zlib1g-dev libncurses5-dev libncursesw5-dev \
           cmake libffi-dev libssl-dev lld ccache \
           build-essential libltdl-dev patch
-
-    - name: Detect system Python version
-      run: |
-        PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-        echo "System Python version: $PYVER"
-        echo "SYSTEM_PYVER=$PYVER" >> $GITHUB_ENV
         python3 --version
 
-    - name: Install Buildozer
+    - name: Install Buildozer + Cython
       run: |
-        # Install directly into system Python — buildozer uses --user pip internally
-        # which is blocked inside a venv, so we cannot use a venv here
         python3 -m pip install --upgrade pip "cython==0.29.36" buildozer==1.5.0
         buildozer --version
         cython --version
@@ -49,25 +41,18 @@ jobs:
         cp app/buildozer.spec   build_src/
         cp model.joblib         build_src/
         cp model_config.json    build_src/
-        echo "Build directory:"
+        echo "Contents:"
         ls -lh build_src/
-
-    - name: Patch buildozer.spec to match system Python
-      run: |
-        # Replace python3==X.Y with the detected system version
-        # Ensures python3 recipe == hostpython3 == venv Python — all match
-        sed -i "s/python3==[0-9][0-9]*\.[0-9][0-9]*/python3==${{ env.SYSTEM_PYVER }}/g" \
-          build_src/buildozer.spec
-        echo "Requirements after patch:"
+        echo "Requirements:"
         grep "^requirements" build_src/buildozer.spec
 
-    - name: Cache Buildozer downloads
+    - name: Cache Buildozer global directory
       uses: actions/cache@v4
       with:
         path: ~/.buildozer
-        key: buildozer-${{ runner.os }}-py${{ env.SYSTEM_PYVER }}-${{ hashFiles('app/buildozer.spec') }}
+        key: buildozer-${{ runner.os }}-v6-${{ hashFiles('app/buildozer.spec') }}
         restore-keys: |
-          buildozer-${{ runner.os }}-py${{ env.SYSTEM_PYVER }}-
+          buildozer-${{ runner.os }}-v6-
           buildozer-${{ runner.os }}-
 
     - name: Accept Android SDK licenses
@@ -90,22 +75,14 @@ jobs:
         path: build_src/bin/*.apk
         retention-days: 30
 
-    - name: Upload buildozer logs on failure
+    - name: Upload logs on failure
       uses: actions/upload-artifact@v4
       if: failure()
       with:
         name: buildozer-failure-logs
-        path: |
-          build_src/.buildozer/android/platform/build-*/dists/cyclingcoach/build.log
-          build_src/.buildozer/android/platform/build-*/build.log
+        path: build_src/.buildozer/
         retention-days: 7
 
     - name: Show result
       run: |
-        if ls build_src/bin/*.apk 1>/dev/null 2>&1; then
-          echo "=== BUILD SUCCEEDED ==="
-          ls -lh build_src/bin/*.apk
-        else
-          echo "=== NO APK FOUND ==="
-          ls build_src/bin/ 2>/dev/null || echo "bin/ directory does not exist"
-        fi
+        ls -lh build_src/bin/*.apk 2>/dev/null && echo "SUCCESS" || echo "No APK found"
