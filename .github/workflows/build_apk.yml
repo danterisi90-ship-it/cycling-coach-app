@@ -1,0 +1,79 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: buildozer-${{ runner.os }}-${{ hashFiles('app/buildozer.spec') }}
+        restore-keys: buildozer-${{ runner.os }}-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq \
+          git wget unzip zip openjdk-17-jdk \
+          python3-pip python3-dev \
+          autoconf automake libtool pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev \
+          cmake libffi-dev libssl-dev lld ccache \
+          build-essential libltdl-dev patch
+
+    - name: Install Buildozer
+      run: |
+        pip3 install --upgrade pip
+        pip3 install buildozer==1.5.0 "cython==0.29.36"
+
+    - name: Prepare build directory
+      run: |
+        mkdir -p build_src
+        cp app/main.py          build_src/
+        cp app/coach_engine.py  build_src/
+        cp app/buildozer.spec   build_src/
+        cp model.joblib         build_src/
+        cp model_config.json    build_src/
+        echo "Build directory contents:"
+        ls -lh build_src/
+
+    - name: Accept Android SDK licenses
+      run: |
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
+
+    - name: Build APK with Buildozer
+      working-directory: build_src
+      run: |
+        buildozer -v android debug 2>&1
+      env:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: cycling-coach-apk
+        path: build_src/bin/*.apk
+        retention-days: 30
+
+    - name: Show APK info
+      working-directory: build_src
+      run: |
+        echo "=== Build Complete ==="
+        ls -lh bin/*.apk || echo "No APK found"

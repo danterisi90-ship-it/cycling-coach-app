@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Buildozer
+.buildozer/
+bin/
+
+# Data files (large — not needed for build)
+intervals_raw_streams.parquet
+intervals_activities.parquet
+merged_daily_dataset.parquet
+training_dataset.parquet
+Google Health/
+
+# Logs and temp
+*.log
+*.tmp
+.tools/
+scratch/
+
+# Sensitive
+coach_history.json
