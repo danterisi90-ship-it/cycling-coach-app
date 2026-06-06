@@ -12,17 +12,20 @@ package.domain = com.coachapp
 source.dir = .
 
 # (list) Source files to include
-source.include_exts = py,png,jpg,kv,atlas,json,joblib
+source.include_exts = py,png,jpg,kv,atlas,json
+
 
 # (list) List of inclusions using pattern matching
-source.include_patterns = model.joblib,model_config.json,coach_engine.py
+source.include_patterns = model_xgb.json,model_config.json,coach_engine.py
+
 
 # (str) Application versioning
 version = 0.1
 
 # (list) Application requirements
 # Separate requirements with commas
-requirements = python3,kivy==2.3.0,pillow,numpy,pandas,xgboost,scikit-learn,joblib
+requirements = python3,kivy==2.3.0,pillow,numpy,pandas,joblib
+
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with source

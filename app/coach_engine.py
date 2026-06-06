@@ -21,8 +21,39 @@ import os
 from pathlib import Path
 from typing import Optional
 
-# numpy, pandas, joblib are imported lazily inside load()/simulate()
-# to avoid uncatchable native library crashes at module level on Android.
+import math
+
+# ---------------------------------------------------------------------------
+# Pure-Python XGBoost tree inference (no xgboost/scipy/numpy needed on Android)
+# ---------------------------------------------------------------------------
+
+def _xgb_traverse(tree: dict, feat_array: list) -> float:
+    """Walk one XGBoost tree (compact JSON format) and return leaf value."""
+    left  = tree['left_children']
+    right = tree['right_children']
+    sidx  = tree['split_indices']
+    scond = tree['split_conditions']
+    bw    = tree['base_weights']
+    deflt = tree['default_left']
+    node  = 0
+    while left[node] != -1:
+        fi  = sidx[node]
+        val = feat_array[fi] if fi < len(feat_array) else float('nan')
+        # Fast NaN check: NaN != NaN
+        if val != val:
+            node = left[node] if deflt[node] else right[node]
+        elif val < scond[node]:
+            node = left[node]
+        else:
+            node = right[node]
+    return bw[node]
+
+
+def _xgb_predict(base_score: float, trees: list,
+                 feature_names: list, feature_dict: dict) -> float:
+    """Pure-Python XGBoost ensemble prediction."""
+    feat_array = [feature_dict.get(fn, float('nan')) for fn in feature_names]
+    return base_score + sum(_xgb_traverse(t, feat_array) for t in trees)
 
 
 # ---------------------------------------------------------------------------
@@ -31,10 +62,11 @@ from typing import Optional
 _HERE = Path(__file__).parent
 _PARENT = _HERE.parent
 
-SEARCH_PATHS = [
-    _HERE / "model.joblib",
-    _PARENT / "model.joblib",
+XGB_JSON_PATHS = [
+    _HERE / "model_xgb.json",
+    _PARENT / "model_xgb.json",
 ]
+SEARCH_PATHS = XGB_JSON_PATHS   # kept for backwards compat
 CONFIG_PATHS = [
     _HERE / "model_config.json",
     _PARENT / "model_config.json",
@@ -187,7 +219,9 @@ class CoachEngine:
     }
 
     def __init__(self):
-        self.model = None
+        self.model = None          # kept for legacy compatibility
+        self.base_score: float = 0.0
+        self.trees_data: list = []
         self.config = None
         self.feature_columns = []
         self.top_features = []
@@ -195,55 +229,15 @@ class CoachEngine:
         self.error_message = ""
 
     def load(self) -> bool:
-        """Load model and config. Returns True on success."""
-        import sys
-        # Import _log from main if available (for on-device diagnostics)
-        try:
-            from main import _log as _eng_log
-        except Exception:
-            _eng_log = lambda m: None
-
-        _eng_log('engine.load() start')
-        # Lazy imports — each logged separately to identify which .so crashes
-        try:
-            _eng_log('importing numpy...')
-            import numpy as np
-            _eng_log(f'numpy OK: {np.__version__}')
-        except Exception as e:
-            self.error_message = f"numpy import failed: {e}"
-            _eng_log(f'numpy FAILED: {e}')
-            return False
-
-        try:
-            _eng_log('importing pandas...')
-            import pandas as pd
-            _eng_log(f'pandas OK: {pd.__version__}')
-        except Exception as e:
-            self.error_message = f"pandas import failed: {e}"
-            _eng_log(f'pandas FAILED: {e}')
-            return False
-
-        try:
-            _eng_log('importing joblib...')
-            import joblib as _joblib
-            _eng_log('joblib OK')
-        except Exception as e:
-            self.error_message = f"joblib import failed: {e}"
-            _eng_log(f'joblib FAILED: {e}')
-            return False
-
-        _eng_log('finding model files...')
-        model_path = _find_file(SEARCH_PATHS)
+        """Load model_xgb.json (pure-Python, no xgboost/scipy required)."""
+        model_path  = _find_file(XGB_JSON_PATHS)
         config_path = _find_file(CONFIG_PATHS)
-        _eng_log(f'model_path={model_path}')
-        _eng_log(f'config_path={config_path}')
 
         if model_path is None:
             self.error_message = (
-                "model.joblib not found.\n"
-                f"Searched: {[str(p) for p in SEARCH_PATHS]}"
+                "model_xgb.json not found.\n"
+                f"Searched: {[str(p) for p in XGB_JSON_PATHS]}"
             )
-            _eng_log(self.error_message)
             return False
 
         if config_path is None:
@@ -251,24 +245,29 @@ class CoachEngine:
                 "model_config.json not found.\n"
                 f"Searched: {[str(p) for p in CONFIG_PATHS]}"
             )
-            _eng_log(self.error_message)
             return False
 
         try:
-            _eng_log(f'joblib.load({model_path})...')
-            self.model = _joblib.load(model_path)
-            _eng_log('joblib.load() OK - model type: ' + type(self.model).__name__)
-            with open(config_path, "r") as f:
+            with open(model_path, 'r') as f:
+                raw = json.load(f)
+
+            params = raw['learner']['learner_model_param']
+            # XGBoost 2.x stores base_score as '[value]' string
+            self.base_score = float(params['base_score'].strip('[] '))
+            self.trees_data = (
+                raw['learner']['gradient_booster']['model']['trees']
+            )
+
+            with open(config_path, 'r') as f:
                 self.config = json.load(f)
-            self.feature_columns = self.config.get("feature_columns", [])
-            self.top_features = self.config.get("top_feature_names", [])
+            self.feature_columns = self.config.get('feature_columns', [])
+            self.top_features    = self.config.get('top_feature_names', [])
             self.loaded = True
-            _eng_log(f'engine.load() COMPLETE. features={len(self.feature_columns)}')
             return True
+
         except Exception as e:
-            import traceback
-            self.error_message = f"Error loading model: {e}"
-            _eng_log(f'model load FAILED: {traceback.format_exc()}')
+            import traceback as _tb
+            self.error_message = f"Error loading model: {e}\n{_tb.format_exc()}"
             return False
 
     def simulate(self, morning_inputs: dict) -> dict:
@@ -307,18 +306,13 @@ class CoachEngine:
         if not self.loaded:
             raise RuntimeError("Engine not loaded. Call load() first.")
 
-        import numpy as np
-        import pandas as pd
-
         history = load_history()
         lag_1_stored = history["action_lag_1"]   # yesterday's actual action
         lag_2 = history["action_lag_2"]           # 2 days ago
         lag_3 = history["action_lag_3"]           # 3 days ago
 
         # ------------------------------------------------------------------
-        # Step 1: XGBoost base prediction for each scenario
-        # The model's wellness features (HRV, CTL, sleep, etc.) capture the
-        # physiological readiness dimension.
+        # Step 1: Pure-Python XGBoost prediction for each scenario
         # ------------------------------------------------------------------
         model_scores = {}
         for action_name, action_code in ACTION_ENCODE.items():
@@ -326,66 +320,36 @@ class CoachEngine:
             inputs["action_lag_1"] = float(action_code)
             inputs["action_lag_2"] = float(lag_2)
             inputs["action_lag_3"] = float(lag_3)
-
-            row = np.array(
-                [inputs.get(col, np.nan) for col in self.feature_columns],
-                dtype=float,
+            model_scores[action_name] = _xgb_predict(
+                self.base_score, self.trees_data, self.feature_columns, inputs
             )
-            X = pd.DataFrame([row], columns=self.feature_columns)
-            model_scores[action_name] = float(self.model.predict(X)[0])
 
         # ------------------------------------------------------------------
-        # Step 2: Sports-science fatigue-recovery adjustment
-        # Based on Banister impulse-response model principles:
-        #   fatigue_load = ATL signal from recent training
-        #   fitness_benefit = CTL signal (positive lag ~14d)
-        #
-        # Recent action sequence effects on NEXT workout EF delta:
-        #   Hard (2): adds significant fatigue → suppresses next EF by ~0.03
-        #   Easy (1): mild fatigue → neutral effect (~0.01)
-        #   Rest (0): recovery → boosts next EF by ~0.02
-        #
-        # Lag weights decay with recency (lag_1 most relevant):
-        #   lag_1 (yesterday): weight 1.0
-        #   lag_2 (2d ago):    weight 0.5
-        #   lag_3 (3d ago):    weight 0.25
-        #
-        # EF_delta_adj = SUM(lag_w * action_effect) for lags 1,2,3
+        # Step 2: Sports-science fatigue-recovery adjustment (Banister)
         # ------------------------------------------------------------------
-        ACTION_EFFECT = {0: +0.020, 1: -0.008, 2: -0.025}  # Rest=recovery, Hard=fatigue
-        LAG_WEIGHTS = {1: 1.0, 2: 0.5, 3: 0.25}
+        ACTION_EFFECT = {0: +0.020, 1: -0.008, 2: -0.025}
+        LAG_WEIGHTS   = {1: 1.0, 2: 0.5, 3: 0.25}
 
-        # Baseline adjustment from stored history (lags 2 and 3 are fixed)
         history_adj = (
             LAG_WEIGHTS[2] * ACTION_EFFECT.get(lag_2, 0) +
             LAG_WEIGHTS[3] * ACTION_EFFECT.get(lag_3, 0)
         )
-
-        scenario_adj = {}
-        for action_name, action_code in ACTION_ENCODE.items():
-            # Lag_1 is the decision variable (what we're choosing today)
-            scenario_adj[action_name] = (
-                LAG_WEIGHTS[1] * ACTION_EFFECT.get(action_code, 0) +
-                history_adj
-            )
+        scenario_adj = {
+            action_name: LAG_WEIGHTS[1] * ACTION_EFFECT.get(action_code, 0) + history_adj
+            for action_name, action_code in ACTION_ENCODE.items()
+        }
 
         # ------------------------------------------------------------------
-        # Step 3: Combine model score + sports-science adjustment
-        # Weight: 60% model (captures current readiness state),
-        #         40% sports science (captures action choice effect)
+        # Step 3: Combine (60% model + 40% sports-science)
         # ------------------------------------------------------------------
-        MODEL_WEIGHT = 0.60
+        MODEL_WEIGHT   = 0.60
         SCIENCE_WEIGHT = 0.40
 
-        # Normalize the model scores to the same scale as the adjustments
-        # (both are EF delta units, ~-0.05 to +0.05)
-        model_base = np.mean(list(model_scores.values()))
-        combined = {}
-        for action in ACTION_ENCODE:
-            combined[action] = (
-                MODEL_WEIGHT * model_scores[action] +
-                SCIENCE_WEIGHT * scenario_adj[action]
-            )
+        model_base = sum(model_scores.values()) / len(model_scores)  # pure-Python mean
+        combined = {
+            action: MODEL_WEIGHT * model_scores[action] + SCIENCE_WEIGHT * scenario_adj[action]
+            for action in ACTION_ENCODE
+        }
 
         best_action = max(combined, key=combined.get)
         score_vals = list(combined.values())
