@@ -7,47 +7,40 @@ on:
 
 jobs:
   build:
-    # Use ubuntu-22.04 which ships Python 3.10 by default (avoids 3.14 conflict)
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Cache Buildozer global directory
-      uses: actions/cache@v4
-      with:
-        path: ~/.buildozer
-        key: buildozer-${{ runner.os }}-v2-${{ hashFiles('app/buildozer.spec') }}
-        restore-keys: buildozer-${{ runner.os }}-v2-
-
-    - name: Install system dependencies + Python 3.11
+    - name: Install system build dependencies
       run: |
         sudo apt-get update -qq
         sudo apt-get install -y -qq \
           git wget unzip zip \
           openjdk-17-jdk \
-          python3.11 python3.11-dev python3.11-venv python3-pip \
+          python3 python3-pip python3-dev python3-venv \
           autoconf automake libtool pkg-config \
           zlib1g-dev libncurses5-dev libncursesw5-dev \
           cmake libffi-dev libssl-dev lld ccache \
           build-essential libltdl-dev patch
 
-    - name: Force Python 3.11 as system default
+    - name: Detect system Python version
       run: |
-        # Make python3 and python point to 3.11 everywhere
-        sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-        sudo update-alternatives --set python3 /usr/bin/python3.11
-        sudo ln -sf /usr/bin/python3.11 /usr/local/bin/python3
-        sudo ln -sf /usr/bin/python3.11 /usr/local/bin/python
+        PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        echo "System Python version: $PYVER"
+        echo "SYSTEM_PYVER=$PYVER" >> $GITHUB_ENV
         python3 --version
-        python --version
 
-    - name: Install Buildozer
+    - name: Install Buildozer in isolated venv
       run: |
-        python3.11 -m pip install --upgrade pip
-        python3.11 -m pip install buildozer==1.5.0 "cython==0.29.36"
+        # Use a clean venv so buildozer + p4a run under the EXACT same
+        # Python that hostpython3 will detect — no version mismatch possible
+        python3 -m venv ~/build_venv
+        ~/build_venv/bin/pip install --upgrade pip
+        ~/build_venv/bin/pip install buildozer==1.5.0 "cython==0.29.36"
+        ~/build_venv/bin/buildozer --version
 
     - name: Prepare build directory
       run: |
@@ -57,25 +50,40 @@ jobs:
         cp app/buildozer.spec   build_src/
         cp model.joblib         build_src/
         cp model_config.json    build_src/
-        echo "Build directory contents:"
+        echo "Build directory:"
         ls -lh build_src/
+
+    - name: Patch buildozer.spec to match system Python
+      run: |
+        # Replace python3==X.Y with the detected system version
+        # Ensures python3 recipe == hostpython3 == venv Python — all match
+        sed -i "s/python3==[0-9][0-9]*\.[0-9][0-9]*/python3==${{ env.SYSTEM_PYVER }}/g" \
+          build_src/buildozer.spec
+        echo "Requirements after patch:"
+        grep "^requirements" build_src/buildozer.spec
+
+    - name: Cache Buildozer downloads
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: buildozer-${{ runner.os }}-py${{ env.SYSTEM_PYVER }}-${{ hashFiles('app/buildozer.spec') }}
+        restore-keys: |
+          buildozer-${{ runner.os }}-py${{ env.SYSTEM_PYVER }}-
+          buildozer-${{ runner.os }}-
 
     - name: Accept Android SDK licenses
       run: |
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
 
-    - name: Build APK with Buildozer
+    - name: Build APK
       working-directory: build_src
       run: |
-        # Ensure buildozer uses 3.11 for both host and target
-        export PYTHON=/usr/bin/python3.11
-        ~/.local/bin/buildozer -v android debug 2>&1
+        ~/build_venv/bin/buildozer -v android debug 2>&1
       env:
         JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        PATH: /home/runner/.local/bin:/usr/bin:/usr/local/bin:/usr/sbin:/usr/local/sbin:/sbin:/bin
 
-    - name: Upload APK artifact
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       if: success()
       with:
@@ -83,17 +91,22 @@ jobs:
         path: build_src/bin/*.apk
         retention-days: 30
 
-    - name: Upload logs on failure
+    - name: Upload buildozer logs on failure
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: buildozer-logs
-        path: build_src/.buildozer/android/
+        name: buildozer-failure-logs
+        path: |
+          build_src/.buildozer/android/platform/build-*/dists/cyclingcoach/build.log
+          build_src/.buildozer/android/platform/build-*/build.log
         retention-days: 7
 
-    - name: Show APK info
-      if: success()
-      working-directory: build_src
+    - name: Show result
       run: |
-        echo "=== Build Complete ==="
-        ls -lh bin/*.apk || echo "No APK found"
+        if ls build_src/bin/*.apk 1>/dev/null 2>&1; then
+          echo "=== BUILD SUCCEEDED ==="
+          ls -lh build_src/bin/*.apk
+        else
+          echo "=== NO APK FOUND ==="
+          ls build_src/bin/ 2>/dev/null || echo "bin/ directory does not exist"
+        fi
