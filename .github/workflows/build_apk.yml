@@ -24,7 +24,9 @@ jobs:
           autoconf automake libtool pkg-config \
           zlib1g-dev libncurses5-dev libncursesw5-dev \
           cmake libffi-dev libssl-dev lld ccache \
-          build-essential libltdl-dev patch
+          build-essential libltdl-dev patch \
+          gettext gettext-base autopoint \
+          libtool-bin gperf
         python3 --version
 
     - name: Install Buildozer + Cython
