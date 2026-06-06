@@ -44,11 +44,13 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle, Rectangle
 from kivy.utils import get_color_from_hex
 
+import traceback
+
 try:
     from coach_engine import CoachEngine, get_history_labels, ACTION_DECODE, ACTION_ENCODE
     ENGINE_IMPORT_ERROR = None
-except ImportError as e:
-    ENGINE_IMPORT_ERROR = str(e)
+except Exception as e:
+    ENGINE_IMPORT_ERROR = traceback.format_exc()
     CoachEngine = None
     def get_history_labels(): return {"yesterday": "?", "2_days_ago": "?", "3_days_ago": "?"}
     ACTION_DECODE = {0: "Rest", 1: "Easy", 2: "Hard"}
@@ -685,6 +687,46 @@ class ResultScreen(Screen):
 
 
 # ─────────────────────────────────────────────────────────────
+#  Error screen — shown instead of crashing
+# ─────────────────────────────────────────────────────────────
+
+class ErrorScreen(Screen):
+    """Full-screen error display so crashes are readable on device."""
+    def __init__(self, error_text: str, **kwargs):
+        super().__init__(**kwargs)
+        root = BoxLayout(orientation="vertical")
+
+        hdr = BoxLayout(size_hint_y=None, height=dp(60),
+                        padding=[dp(16), dp(10)])
+        with hdr.canvas.before:
+            Color(0.5, 0.05, 0.05, 1)
+            Rectangle(pos=hdr.pos, size=hdr.size)
+        hdr.bind(pos=lambda w, v: setattr(hdr.canvas.before.children[1], 'pos', v),
+                 size=lambda w, v: setattr(hdr.canvas.before.children[1], 'size', v))
+        hdr_lbl = Label(text="STARTUP ERROR", font_size=sp(18), bold=True,
+                        color=(1, 0.4, 0.4, 1))
+        hdr.add_widget(hdr_lbl)
+        root.add_widget(hdr)
+
+        scroll = ScrollView()
+        err_lbl = Label(
+            text=error_text,
+            font_size=sp(11),
+            color=(1, 0.8, 0.8, 1),
+            halign="left",
+            valign="top",
+            text_size=(Window.width - dp(32), None),
+            size_hint_y=None,
+            padding=[dp(12), dp(12)],
+        )
+        err_lbl.bind(texture_size=lambda i, v: setattr(i, 'height', v[1]))
+        scroll.add_widget(err_lbl)
+        root.add_widget(scroll)
+
+        self.add_widget(root)
+
+
+# ─────────────────────────────────────────────────────────────
 #  App root
 # ─────────────────────────────────────────────────────────────
 
@@ -692,11 +734,43 @@ class CyclingCoachApp(App):
     title = "Cycling Coach"
 
     def build(self):
-        self.engine = CoachEngine() if CoachEngine else None
-        if self.engine:
-            ok = self.engine.load()
-            if not ok:
-                print(f"[Engine] {self.engine.error_message}")
+        try:
+            return self._build_app()
+        except Exception:
+            tb = traceback.format_exc()
+            # Write crash log to a discoverable location
+            try:
+                import os
+                log_paths = [
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'crash.log'),
+                    '/sdcard/cycling_coach_crash.log',
+                ]
+                for lp in log_paths:
+                    try:
+                        with open(lp, 'w') as f:
+                            f.write(tb)
+                        break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            sm = ScreenManager()
+            sm.add_widget(ErrorScreen(name="error", error_text=tb))
+            return sm
+
+    def _build_app(self):
+        self.engine = None
+        if CoachEngine is not None:
+            try:
+                self.engine = CoachEngine()
+                ok = self.engine.load()
+                if not ok:
+                    print(f"[Engine] {self.engine.error_message}")
+            except Exception as e:
+                print(f"[Engine load error] {e}")
+                self.engine = None
+        elif ENGINE_IMPORT_ERROR:
+            print(f"[Engine import error] {ENGINE_IMPORT_ERROR}")
 
         sm = ScreenManager()
         sm.add_widget(HomeScreen(name="home",     engine=self.engine))
